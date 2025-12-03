@@ -1,0 +1,367 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ghost typer</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<style>
+:root{
+  --bg:#0b0f12;
+  --panel:#0f1316;
+  --ghost:#72767a;
+  --correct:#ffffff;
+  --wrong:#ff5d5d;
+  --accent:#bec7d0;
+}
+
+body{
+  margin:0;
+  padding:24px;
+  background:var(--bg);
+  font-family:Inter, sans-serif;
+  color:var(--accent);
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap:20px;
+}
+
+.levels{
+  width:100%;
+  max-width:1000px;
+  display:flex;
+  flex-direction:column;
+  gap:16px;
+}
+
+.level-grid{
+  display:grid;
+  grid-template-columns:repeat(10,1fr);
+  gap:10px;
+}
+
+.level-btn{
+  background:var(--panel);
+  border:1px solid rgba(255,255,255,0.05);
+  color:var(--accent);
+  padding:10px;
+  border-radius:10px;
+  cursor:pointer;
+  font-size:14px;
+  font-weight:600;
+  transition:0.15s;
+}
+.level-btn.selected{
+  background:#1c2227;
+  border-color:#2f3a43;
+}
+
+.panel{
+  width:100%;
+  max-width:1000px;
+  background:var(--panel);
+  border:1px solid rgba(255,255,255,0.05);
+  border-radius:14px;
+  padding:26px;
+  display:flex;
+  flex-direction:column;
+  gap:22px;
+}
+
+.sentence-wrap{
+  width:100%;
+  min-height:120px;
+  padding:22px;
+  border-radius:12px;
+  background:rgba(255,255,255,0.03);
+  display:flex;
+  align-items:center;
+  position:relative;
+}
+
+.chars{
+  font-size:28px;
+  line-height:1.7;
+  display:flex;
+  flex-wrap:wrap;
+  gap:6px;
+}
+
+.char-untyped{
+  color:var(--ghost);
+  opacity:0.9;
+}
+
+.char-correct{
+  color:var(--correct);
+  transition:0.2s;
+}
+
+.char-wrong{
+  color:var(--wrong);
+  transition:0.2s;
+}
+
+.caret{
+  width:2px;
+  height:1.1em;
+  background:#d0d0d0;
+  border-radius:2px;
+  animation:blink 1s infinite;
+}
+@keyframes blink{
+  0%{opacity:1}
+  50%{opacity:0}
+  100%{opacity:1}
+}
+
+/* progress bar */
+.progress-container{
+  width:100%;
+  max-width:980px;
+  background:rgba(255,255,255,0.1);
+  height:8px;
+  border-radius:6px;
+  overflow:hidden;
+  margin-top:10px;
+}
+
+.progress-bar{
+  width:0%;
+  height:100%;
+  background:linear-gradient(90deg,#8aaaff,#d0d8ff);
+  transition:width .2s ease-out;
+}
+
+.controls{
+  display:flex;
+  gap:12px;
+}
+
+.btn{
+  background:#1c2227;
+  border:1px solid rgba(255,255,255,0.05);
+  color:var(--accent);
+  padding:10px 16px;
+  border-radius:10px;
+  font-weight:700;
+  cursor:pointer;
+}
+
+.stats{
+  display:flex;
+  gap:18px;
+  font-size:15px;
+  font-weight:600;
+}
+
+</style>
+</head>
+<body>
+
+<div class="levels">
+  <div style="font-weight:700;font-size:16px;">choose level</div>
+  <div class="level-grid" id="levelGrid"></div>
+</div>
+
+<div class="panel">
+  <div class="sentence-wrap" id="sentenceWrap">
+    <div class="chars" id="chars"></div>
+    <div class="caret" id="caret"></div>
+  </div>
+
+  <div class="progress-container">
+    <div class="progress-bar" id="progressBar"></div>
+  </div>
+
+  <div class="controls">
+    <button class="btn" id="restartBtn">restart</button>
+    <button class="btn" id="showLevelsBtn">levels</button>
+  </div>
+
+  <div class="stats">
+    <span id="wpm">wpm: 0</span>
+    <span id="accuracy">accuracy: 100%</span>
+    <span id="timer">time: 0s</span>
+  </div>
+</div>
+
+<input id="hiddenInput" style="position:fixed;left:-9999px;top:-9999px" />
+
+<script>
+/* SENTENCES — your style, no caps, no punctuation */
+const sentences = [
+  "how can i leave when i just got here",
+  "do as i say and you will live well",
+  "can you try and help me doofus",
+  "school is a very over rated thing",
+  "why does today feel like a soft reset",
+  "i swear the world moves weird sometimes",
+  "nothing hits harder than a quiet moment",
+  "i keep trying even when i got nothing left",
+  "why do my thoughts run faster than my feet",
+  "im just walking forward hoping it works out",
+  "it feels like life keeps whispering try again",
+  "honestly i dont know what im doing half the time",
+  "if i slow down too much my brain gets too loud",
+  "sometimes i think i care a little too much",
+  "im learning to chill even when im stressed",
+  "i keep telling myself to breathe and keep going",
+  "every small thing feels bigger when im tired",
+  "im trying to be better without losing myself",
+  "i feel myself growing even when it hurts a bit",
+  "intense workout makes me exhausted"
+];
+
+const levelGrid = document.getElementById("levelGrid");
+const charsEl = document.getElementById("chars");
+const caret = document.getElementById("caret");
+const hiddenInput = document.getElementById("hiddenInput");
+const progressBar = document.getElementById("progressBar");
+
+let current = [];
+let cursor = 0;
+let startedAt = null;
+let timerInterval = null;
+let typed = 0;
+let correct = 0;
+let finished = false;
+
+/* build 20 level buttons */
+for(let i=0;i<20;i++){
+  const b = document.createElement("button");
+  b.className="level-btn";
+  b.textContent="level "+(i+1);
+  b.dataset.level=i;
+  b.onclick=()=>loadLevel(i);
+  levelGrid.appendChild(b);
+}
+
+function loadLevel(i){
+  document.querySelectorAll(".level-btn").forEach(b=>b.classList.remove("selected"));
+  levelGrid.children[i].classList.add("selected");
+
+  const text = sentences[i];
+  cursor = 0;
+  typed = 0;
+  correct = 0;
+  finished = false;
+  startedAt = null;
+  progressBar.style.width="0%";
+
+  clearInterval(timerInterval);
+  document.getElementById("timer").textContent="time: 0s";
+  document.getElementById("wpm").textContent="wpm: 0";
+  document.getElementById("accuracy").textContent="accuracy: 100%";
+
+  charsEl.innerHTML="";
+  current = [];
+
+  for(let c of text){
+    const span=document.createElement("span");
+    span.textContent=c;
+    span.className="char-untyped";
+    current.push(span);
+    charsEl.appendChild(span);
+  }
+
+  positionCaret();
+  hiddenInput.value="";
+  hiddenInput.focus();
+}
+
+function positionCaret(){
+  const target=current[cursor];
+  if(!target){ charsEl.appendChild(caret); return; }
+  target.before(caret);
+}
+
+/* typing logic */
+hiddenInput.addEventListener("keydown",e=>{
+  if(e.key==="Backspace"){
+    e.preventDefault();
+    if(cursor>0 && !finished){
+      cursor--;
+      current[cursor].className="char-untyped";
+      typed--;
+      updateStats();
+      positionCaret();
+      updateProgress();
+    }
+  }
+});
+
+hiddenInput.addEventListener("input",e=>{
+  const value=hiddenInput.value;
+  if(!value) return;
+  for(const ch of value) typeChar(ch);
+  hiddenInput.value="";
+});
+
+function typeChar(ch){
+  if(finished) return;
+
+  if(!startedAt){
+    startedAt=Date.now();
+    startTimer();
+  }
+
+  const target=current[cursor];
+  if(!target) return;
+
+  if(ch===target.textContent){
+    target.className="char-correct";
+    correct++;
+  } else {
+    target.className="char-wrong";
+  }
+
+  typed++;
+  cursor++;
+
+  updateStats();
+  updateProgress();
+  positionCaret();
+
+  if(cursor>=current.length) finish();
+}
+
+function updateProgress(){
+  const pct=(cursor/current.length)*100;
+  progressBar.style.width=pct+"%";
+}
+
+function startTimer(){
+  timerInterval=setInterval(()=>{
+    const sec=Math.floor((Date.now()-startedAt)/1000);
+    document.getElementById("timer").textContent="time: "+sec+"s";
+    updateStats();
+  },500);
+}
+
+function updateStats(){
+  const min = (Date.now()-startedAt)/60000 || 1/60;
+  const wpm = Math.round((typed/5)/min);
+  const acc = typed===0 ? 100 : Math.round((correct/typed)*100);
+
+  document.getElementById("wpm").textContent="wpm: "+wpm;
+  document.getElementById("accuracy").textContent="accuracy: "+acc+"%";
+}
+
+function finish(){
+  finished=true;
+  clearInterval(timerInterval);
+  caret.style.opacity=0;
+}
+
+document.getElementById("restartBtn").onclick=()=>loadLevel(document.querySelector(".level-btn.selected").dataset.level);
+document.getElementById("showLevelsBtn").onclick=()=>window.scrollTo({top:0,behavior:"smooth"});
+
+document.getElementById("sentenceWrap").onclick=()=>hiddenInput.focus();
+
+/* load level 1 automatically */
+loadLevel(0);
+</script>
+</body>
+</html>
